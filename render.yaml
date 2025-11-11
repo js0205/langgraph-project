@@ -1,0 +1,19 @@
+services:
+  # 后端服务
+  - type: web
+    name: medical-backend
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npx tsx src/index.ts
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    healthCheckPath: /api/health

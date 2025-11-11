@@ -5,8 +5,9 @@ services:
     runtime: node
     region: singapore
     plan: free
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npx tsx src/index.ts
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run start:prod
     envVars:
       - key: GOOGLE_API_KEY
         sync: false

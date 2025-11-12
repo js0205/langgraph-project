@@ -2,6 +2,14 @@
 
 一个基于 LangGraph 的多智能体医疗咨询系统，采用协作式 AI 架构，提供专业的症状诊断、用药建议、科研支持和健康咨询服务。
 
+## 🌐 在线演示
+
+**🚀 立即体验：** https://frontend-duzoqjgye-js0205s-projects.vercel.app
+
+- 前端：Vercel（全球 CDN）
+- 后端：Render（新加坡节点）
+- API：https://langgraph-project-5dqx.onrender.com
+
 ## 📋 项目概述
 
 本项目是一个采用**多智能体协作架构**的全栈医疗咨询应用：

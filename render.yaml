@@ -23,14 +23,13 @@ services:
   - type: web
     name: medical-frontend
     runtime: static
-    region: singapore
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://medical-backend.onrender.com
+        value: https://langgraph-project-5dqx.onrender.com
     routes:
       - type: rewrite
         source: /*

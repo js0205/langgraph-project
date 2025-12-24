@@ -1,24 +1,4 @@
 services:
-  # 后端服务 (Node.js + Express + LangGraph)
-  - type: web
-    name: medical-backend
-    runtime: node
-    region: singapore
-    plan: free
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: npm start
-    envVars:
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: PORT
-        value: 3000
-      - key: NODE_ENV
-        value: production
-      - key: ALLOWED_ORIGINS
-        value: "*"
-    healthCheckPath: /api/health
-
   # 前端服务 (React + Vite + TypeScript)
   - type: web
     name: medical-frontend

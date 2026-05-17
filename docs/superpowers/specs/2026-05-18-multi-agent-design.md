@@ -189,13 +189,18 @@ backend/src/services/multiAgentService.ts  # 替换 workflowService（全新）
 ### 修改文件
 
 ```
-backend/src/agents/BaseAgent.ts       # 增加模型参数注入支持
-backend/src/agents/CoordinatorAgent.ts # 接入新 prompt 文件
-backend/src/agents/DiagnosticAgent.ts  # 接入新 prompt 文件
-backend/src/agents/ResearchAgent.ts    # 接入新 prompt 文件
-backend/src/agents/PharmacistAgent.ts  # 接入新 prompt 文件
-backend/src/agents/AdvisorAgent.ts     # 接入新 prompt 文件
+backend/src/agents/CoordinatorAgent.ts # super() 传入模型名，接入 prompt 文件
+backend/src/agents/DiagnosticAgent.ts  # super() 传入模型名，接入 prompt 文件
+backend/src/agents/ResearchAgent.ts    # super() 传入模型名，接入 prompt 文件
+backend/src/agents/PharmacistAgent.ts  # super() 传入模型名，接入 prompt 文件
+backend/src/agents/AdvisorAgent.ts     # super() 传入模型名，接入 prompt 文件
 backend/src/routes/chatRoutes.ts       # /workflow 改为 SSE 响应
+```
+
+### 无需修改
+
+```
+backend/src/agents/BaseAgent.ts        # 已支持第三个参数 modelName，无需改动
 ```
 
 ### 删除/废弃

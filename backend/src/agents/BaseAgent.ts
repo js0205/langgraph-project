@@ -1,86 +1,55 @@
-// Agent 基类
-
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { IAgent, AgentState } from './types';
+import pino from 'pino';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-/**
- * Agent 基类
- * 所有专业 Agent 都继承此类
- */
+const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
+
+if (!process.env.GOOGLE_API_KEY) {
+  throw new Error('GOOGLE_API_KEY 未配置在环境变量中');
+}
+
+// 模块级单例：所有 Agent 共享同一个模型实例，避免并发时重复创建
+export const sharedModel = new ChatGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: 'gemini-2.0-flash-exp',
+  temperature: 0.7,
+});
+
 export abstract class BaseAgent implements IAgent {
   public name: string;
   public description: string;
-  protected model: ChatGoogleGenerativeAI;
+  protected model = sharedModel;
 
-  constructor(name: string, description: string, modelName: string = 'gemini-2.0-flash-exp') {
+  constructor(name: string, description: string) {
     this.name = name;
     this.description = description;
-
-    // 初始化模型
-    const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      throw new Error('GOOGLE_API_KEY 未配置在环境变量中');
-    }
-
-    this.model = new ChatGoogleGenerativeAI({
-      apiKey,
-      model: modelName,
-      temperature: 0.7,
-    });
-
-    console.log(`✅ ${this.name} 初始化成功`);
   }
 
-  /**
-   * 抽象方法：执行 Agent 任务
-   * 子类必须实现此方法
-   */
   abstract execute(state: AgentState): Promise<Partial<AgentState>>;
 
-  /**
-   * 辅助方法：调用 LLM 并解析 JSON 响应
-   */
+  // 用正则提取第一个完整 JSON 对象或数组，忽略前后文字
   protected async invokeJSON<T>(prompt: string): Promise<T> {
-    try {
-      const response = await this.model.invoke(prompt);
-      const content = response.content.toString().trim();
-
-      // 清理可能的 markdown 代码块标记
-      const cleanContent = content
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '');
-
-      return JSON.parse(cleanContent) as T;
-    } catch (error) {
-      console.error(`❌ ${this.name} JSON 解析失败:`, error);
-      throw error;
-    }
+    const raw = await this.model.invoke(prompt);
+    const text = raw.content.toString();
+    const match = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (!match) throw new Error(`JSON 提取失败: ${text.slice(0, 100)}`);
+    return JSON.parse(match[0]) as T;
   }
 
-  /**
-   * 辅助方法：调用 LLM 并返回文本响应
-   */
   protected async invokeText(prompt: string): Promise<string> {
-    try {
-      const response = await this.model.invoke(prompt);
-      return response.content.toString().trim();
-    } catch (error) {
-      console.error(`❌ ${this.name} 调用失败:`, error);
-      throw error;
-    }
+    const raw = await this.model.invoke(prompt);
+    return raw.content.toString().trim();
   }
 
-  /**
-   * 日志辅助方法
-   */
-  protected log(message: string): void {
-    console.log(`🤖 [${this.name}] ${message}`);
+  protected log(msg: string): void {
+    logger.info({ agent: this.name }, msg);
   }
 
-  protected logError(message: string, error?: any): void {
-    console.error(`❌ [${this.name}] ${message}`, error || '');
+  protected logError(msg: string, err?: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error({ agent: this.name }, `${msg}: ${message}`);
   }
 }

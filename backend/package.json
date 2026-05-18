@@ -6,7 +6,8 @@
     "start": "npx tsx src/index.ts",
     "dev": "npx tsx src/index.ts",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -21,12 +22,16 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "tsx": "^4.20.6"
+    "pino": "10.3.1",
+    "tsx": "^4.20.6",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/node": "^24.10.0",
-    "typescript": "^5.9.3"
+    "@vitest/coverage-v8": "4.1.6",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.6"
   },
   "engines": {
     "node": ">=20.0.0"

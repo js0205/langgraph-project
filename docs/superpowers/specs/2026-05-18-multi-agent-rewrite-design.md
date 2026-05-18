@@ -224,21 +224,21 @@ const graph = new StateGraph(AgentStateAnnotation)
 ### 2.2 并行路由（优化1）
 
 ```typescript
+// 统一以 plan 数组为路由依据，避免与标志位不一致
 function routeAfterCoordinator(state): string | string[] {
-  const { needsResearch, needsDiagnostic } = state.coordinatorDecision!;
-  if (needsResearch && needsDiagnostic) return ['research', 'diagnostic']; // 并行
-  if (needsResearch)   return 'research';
-  if (needsDiagnostic) return 'diagnostic';
-  return 'pharmacist';
+  const plan = state.coordinatorDecision!.plan;
+  const parallel = plan.filter(a => a === 'research' || a === 'diagnostic');
+  if (parallel.length > 1) return parallel;  // research + diagnostic 并行
+  if (parallel.length === 1) return parallel[0];
+  return plan[0] ?? 'advisor';
 }
 
 function routeToNext(state): string {
   const plan = state.coordinatorDecision?.plan ?? [];
-  // 通过检查哪些结果字段已写入来判断执行进度
   const done = new Set([
-    state.researchResults    && 'research',
-    state.diagnosticResults  && 'diagnostic',
-  ].filter(Boolean));
+    state.researchResults   && 'research',
+    state.diagnosticResults && 'diagnostic',
+  ].filter(Boolean) as string[]);
   return plan.find(a => !done.has(a)) ?? 'pharmacist';
 }
 ```

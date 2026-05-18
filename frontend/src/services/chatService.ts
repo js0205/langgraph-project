@@ -1,23 +1,60 @@
-import { apiClient } from './api';
-import type { ChatMessage, ChatRequest, ChatResponse } from '../types/chat';
+import type { SseEvent } from '../types/chat';
 
-export type { ChatMessage, ChatRequest, ChatResponse };
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 
 export const chatService = {
-  // 简单聊天模式
-  async sendMessage(request: ChatRequest): Promise<ChatResponse> {
-    const response = await apiClient.post<ChatResponse>('/chat', request);
-    return response.data;
+  /**
+   * 流式咨询：POST /chat/stream，通过 SSE 接收执行进度和最终结果
+   */
+  async streamConsult(
+    message: string,
+    onEvent: (event: SseEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE}/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('响应流不可用');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6)) as SseEvent;
+              onEvent(event);
+            } catch {
+              // 忽略格式异常行
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   },
 
-  // 工作流模式 - 使用 LangGraph 处理
-  async sendMessageWithWorkflow(message: string): Promise<ChatResponse> {
-    const response = await apiClient.post<ChatResponse>('/chat/workflow', { message });
-    return response.data;
-  },
-
-  async checkHealth(): Promise<any> {
-    const response = await apiClient.get('/health');
-    return response.data;
+  async checkHealth(): Promise<{ status: string }> {
+    const res = await fetch(`${API_BASE}/health`);
+    return res.json();
   },
 };

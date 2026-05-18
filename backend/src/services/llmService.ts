@@ -39,7 +39,7 @@ class LLMService {
     // 选择并配置 Gemini 模型
     // gemini-2.0-flash-exp 是 Google 提供的最新实验性快速模型
     this.model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.0-flash',
       // 生成配置
       generationConfig: {
         temperature: 0.7,      // 控制随机性，0-1之间，越高越随机

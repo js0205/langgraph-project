@@ -14,7 +14,7 @@ if (!process.env.GOOGLE_API_KEY) {
 // 模块级单例：所有 Agent 共享同一个模型实例，避免并发时重复创建
 export const sharedModel = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY,
-  model: 'gemini-2.0-flash-exp',
+  model: 'gemini-2.0-flash',
   temperature: 0.7,
 });
 

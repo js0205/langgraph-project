@@ -1,127 +1,97 @@
-// Agent 系统类型定义
+// ===== 共享状态 =====
 
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-
-/**
- * Agent 状态接口
- * 所有 Agent 共享的工作流状态
- */
-export interface AgentState {
-  // 用户输入
-  userMessage: string;
-
-  // 协调器决策结果
-  coordinatorDecision?: {
-    needsResearch: boolean;      // 是否需要文献研究
-    needsDiagnostic: boolean;    // 是否需要诊断分析
-    needsPharmacist: boolean;    // 是否需要药品查询
-    complexity: 'simple' | 'medium' | 'complex';  // 问题复杂度
-    plan: string[];              // 执行计划（Agent 列表）
-    reasoning: string;           // 决策原因
-  };
-
-  // 各个 Agent 的结果
-  researchResults?: ResearchResult;
-  diagnosticResults?: DiagnosticResult;
-  pharmacistResults?: PharmacistResult;
-  advisorResults?: AdvisorResult;
-
-  // 执行过程跟踪
-  completedAgents?: string[];    // 已完成的 Agent
-  currentAgent?: string;         // 当前执行的 Agent
-  errors?: string[];             // 错误信息
+export interface CoordinatorDecision {
+  needsResearch: boolean;
+  needsDiagnostic: boolean;
+  needsPharmacist: boolean;
+  complexity: 'simple' | 'medium' | 'complex';
+  plan: string[];
+  reasoning: string;
 }
 
-/**
- * 研究结果
- */
+export interface ResearchFinding {
+  title: string;
+  summary: string;
+  relevance: number;
+  label: '[AI知识摘要]';
+}
+
 export interface ResearchResult {
   query: string;
-  sources: Array<{
-    title: string;
-    url: string;
-    summary: string;
-    relevance: number;
-  }>;
+  findings: ResearchFinding[];
   keyFindings: string[];
   timestamp: string;
 }
 
-/**
- * 诊断结果
- */
+export interface DiagnosticCondition {
+  name: string;
+  probability: number;
+  severity: 'mild' | 'moderate' | 'severe';
+  description: string;
+}
+
 export interface DiagnosticResult {
   symptoms: string[];
-  possibleConditions: Array<{
-    name: string;
-    probability: number;
-    severity: 'mild' | 'moderate' | 'severe';
-    description: string;
-  }>;
+  possibleConditions: DiagnosticCondition[];
   riskFactors: string[];
   urgency: 'low' | 'medium' | 'high';
   recommendation: string;
 }
 
-/**
- * 药品查询结果
- */
+export interface Medicine {
+  name: string;
+  genericName?: string;
+  type: string;
+  indication: string;
+  usage: string;
+  contraindication?: string;
+  sideEffects?: string[];
+  interactions?: string[];
+  price?: { min: number; max: number; currency: string };
+}
+
 export interface PharmacistResult {
-  medicines: Array<{
-    name: string;
-    genericName?: string;
-    type: string;
-    indication: string;
-    usage: string;
-    contraindication?: string;
-    sideEffects?: string[];
-    interactions?: string[];
-    price?: {
-      min: number;
-      max: number;
-      currency: string;
-    };
-  }>;
+  medicines: Medicine[];
   warnings: string[];
 }
 
-/**
- * 最终建议结果
- */
+export interface RecommendedMedicine {
+  name: string;
+  reason: string;
+  usage: string;
+  precautions: string[];
+}
+
 export interface AdvisorResult {
   summary: string;
   diagnosis?: string;
-  recommendedMedicines: Array<{
-    name: string;
-    reason: string;
-    usage: string;
-    precautions: string[];
-  }>;
+  recommendedMedicines: RecommendedMedicine[];
   precautions: string[];
   references: string[];
   urgency: string;
   disclaimer: string;
 }
 
-/**
- * Agent 基类接口
- */
+export interface AgentState {
+  userMessage: string;
+  coordinatorDecision?: CoordinatorDecision;
+  researchResults?: ResearchResult;
+  diagnosticResults?: DiagnosticResult;
+  pharmacistResults?: PharmacistResult;
+  advisorResults?: AdvisorResult;
+  errors: string[];
+}
+
+// ===== Agent 接口（不暴露底层模型类型）=====
+
 export interface IAgent {
   name: string;
   description: string;
-  model: ChatGoogleGenerativeAI;
-
-  /**
-   * 执行 Agent 任务
-   * @param state 当前工作流状态
-   * @returns 更新后的状态（部分）
-   */
   execute(state: AgentState): Promise<Partial<AgentState>>;
 }
 
-/**
- * 协调器决策分析结果
- */
+// ===== Coordinator 内部分析结果 =====
+
 export interface CoordinatorAnalysis {
   needsResearch: boolean;
   needsDiagnostic: boolean;
@@ -129,3 +99,12 @@ export interface CoordinatorAnalysis {
   complexity: 'simple' | 'medium' | 'complex';
   reasoning: string;
 }
+
+// ===== SSE 事件类型 =====
+
+export type SseEvent =
+  | { type: 'agent_start'; agent: string }
+  | { type: 'agent_complete'; agent: string; summary: string }
+  | { type: 'final_result'; data: AdvisorResult }
+  | { type: 'error'; message: string }
+  | { type: 'done' };

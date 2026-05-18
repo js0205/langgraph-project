@@ -1,14 +1,33 @@
 services:
+  # 后端服务 (Node.js + Express + LangGraph)
+  - type: web
+    name: medical-backend
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    healthCheckPath: /api/health
+
   # 前端服务 (React + Vite + TypeScript)
   - type: web
     name: medical-frontend
     runtime: static
+    region: singapore
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://langgraph-project-5dqx.onrender.com
+        value: https://medical-backend.onrender.com/api
     routes:
       - type: rewrite
         source: /*

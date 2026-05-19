@@ -305,6 +305,9 @@ export default function App() {
             </button>
           </div>
           <p className="text-xs text-gray-400 text-center">AI 回复仅供参考，具体用药请咨询专业医生</p>
+          <p className="text-xs text-gray-300 text-center">
+            累计访问 <span id="busuanzi_value_site_pv">--</span> 次 · 访客 <span id="busuanzi_value_site_uv">--</span> 人
+          </p>
         </div>
       </div>
     </div>

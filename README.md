@@ -72,8 +72,8 @@ graph TB
 创建 `backend/.env` 文件：
 
 ```bash
-# LLM API 配置
-GEMINI_API_KEY=your_gemini_api_key_here
+# LLM API 配置（对话与 embedding 共用；变量名为 GOOGLE_API_KEY）
+GOOGLE_API_KEY=your_gemini_api_key_here
 # 或使用其他模型
 # OPENAI_API_KEY=your_openai_key
 # ANTHROPIC_API_KEY=your_anthropic_key

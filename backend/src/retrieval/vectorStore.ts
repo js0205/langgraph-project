@@ -18,7 +18,7 @@ export async function getVectorStore(): Promise<PGVectorStore> {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL 未配置');
   const embeddings = new GoogleGenerativeAIEmbeddings({
     apiKey: process.env.GOOGLE_API_KEY,
-    model: 'text-embedding-004',
+    model: 'gemini-embedding-001',
   });
   return PGVectorStore.initialize(embeddings, {
     postgresConnectionOptions: { connectionString: process.env.DATABASE_URL },

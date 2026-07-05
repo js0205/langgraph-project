@@ -112,7 +112,9 @@ npm run ingest
 不必。PubMed 匿名调用限速 3 次/秒，Demo 足够。高并发再去 https://www.ncbi.nlm.nih.gov/account/ 免费申请。
 
 **Q：embedding 要额外付费吗？**
-不用。用的是 Gemini `text-embedding-004`，与对话共用 `GOOGLE_API_KEY`，几十份说明书的向量化在免费额度内。
+不用。用的是 Gemini `gemini-embedding-001`（3072 维），与对话共用 `GOOGLE_API_KEY`，几十份说明书的向量化在免费额度内。
+
+> ⚠️ 注意：embedding 模型必须选 API Key 所在项目实际可用的型号。部分 Key 不支持 `text-embedding-004`，本项目改用 `gemini-embedding-001`。如需确认可用模型，请求 `https://generativelanguage.googleapis.com/v1beta/models?key=你的KEY` 查看支持 `embedContent` 的型号。
 
 **Q：换了 embedding 模型怎么办？**
 向量维度与模型绑定。若更换 embedding 模型，必须重跑 `npm run ingest` 重算全部向量。

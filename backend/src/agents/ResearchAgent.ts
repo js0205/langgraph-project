@@ -1,5 +1,6 @@
 import { BaseAgent } from './BaseAgent';
-import { AgentState, ResearchResult } from './types';
+import { AgentState, ResearchResult, ResearchFinding } from './types';
+import { searchArticles, PubmedArticle } from '../retrieval/pubmedClient';
 
 export class ResearchAgent extends BaseAgent {
   constructor() {
@@ -8,21 +9,32 @@ export class ResearchAgent extends BaseAgent {
 
   async execute(state: AgentState): Promise<Partial<AgentState>> {
     this.log('开始医学知识研究...');
-
     const query = this.buildQuery(state);
 
     try {
-      const { findings, keyFindings } = await this.research(query);
-      this.log(`研究完成，获取 ${findings.length} 条知识摘要`);
+      const articles = await searchArticles(query, 5);
 
-      const result: ResearchResult = {
-        query,
-        findings,
-        keyFindings,
-        timestamp: new Date().toISOString(),
+      if (articles.length === 0) {
+        this.log('PubMed 无结果，降级为纯生成');
+        const fallback = await this.generateFromMemory(query);
+        return { researchResults: fallback, errors: [] };
+      }
+
+      const keyFindings = await this.summarize(query, articles);
+      const findings: ResearchFinding[] = articles.map((a, i) => ({
+        title: a.title,
+        summary: a.title,
+        relevance: Math.max(50, 95 - i * 10),
+        label: '[PubMed]',
+        pmid: a.pmid,
+        url: a.url,
+      }));
+
+      this.log(`研究完成，获取 ${findings.length} 条 PubMed 文献`);
+      return {
+        researchResults: { query, findings, keyFindings, timestamp: new Date().toISOString() },
+        errors: [],
       };
-
-      return { researchResults: result, errors: [] };
     } catch (error) {
       this.logError('研究失败', error);
       return {
@@ -45,31 +57,40 @@ export class ResearchAgent extends BaseAgent {
     return state.userMessage;
   }
 
-  private async research(query: string): Promise<{ findings: ResearchResult['findings']; keyFindings: string[] }> {
-    const prompt = `你是医学知识助手。请基于你的知识库，针对以下主题提供权威医学摘要。
+  /** 基于检索到的真实文献标题提炼关键结论 */
+  private async summarize(query: string, articles: PubmedArticle[]): Promise<string[]> {
+    const list = articles.map((a, i) => `${i + 1}. ${a.title} (PMID:${a.pmid})`).join('\n');
+    const prompt = `你是医学知识助手。以下是从 PubMed 检索到的真实文献标题：
 
-研究主题: ${query}
+研究主题：${query}
+${list}
 
-注意：只使用你已知的医学知识，不要生成 URL 或引用不存在的文献。
+请仅基于这些文献主题，提炼 3-5 条与主题最相关的关键结论。只返回以下 JSON：
+{ "keyFindings": ["结论1", "结论2", "结论3"] }`;
+    const { keyFindings } = await this.invokeJSON<{ keyFindings: string[] }>(prompt);
+    return keyFindings;
+  }
 
-请返回以下 JSON，不要添加其他内容：
+  /** 检索无结果时的降级：纯模型记忆生成，明确标注未检索 */
+  private async generateFromMemory(query: string): Promise<ResearchResult> {
+    const prompt = `你是医学知识助手。请基于你的知识，针对主题提供摘要。
+注意：不要生成 URL 或引用不存在的文献。
+
+研究主题：${query}
+
+只返回以下 JSON：
 {
-  "findings": [
-    {
-      "title": "知识点标题",
-      "summary": "100字以内的知识摘要",
-      "relevance": 90,
-      "label": "[AI知识摘要]"
-    }
-  ],
-  "keyFindings": ["关键结论1", "关键结论2", "关键结论3"]
-}
-
-要求：
-- findings 提供 2-3 条知识点
-- label 字段固定为 "[AI知识摘要]"
-- keyFindings 提炼 3-5 条最重要的结论`;
-
-    return await this.invokeJSON<{ findings: ResearchResult['findings']; keyFindings: string[] }>(prompt);
+  "findings": [{ "title": "知识点标题", "summary": "100字内摘要", "relevance": 80 }],
+  "keyFindings": ["结论1", "结论2", "结论3"]
+}`;
+    const raw = await this.invokeJSON<{
+      findings: Array<{ title: string; summary: string; relevance: number }>;
+      keyFindings: string[];
+    }>(prompt);
+    const findings: ResearchFinding[] = (raw.findings ?? []).map((f) => ({
+      ...f,
+      label: '[AI知识摘要-未检索]',
+    }));
+    return { query, findings, keyFindings: raw.keyFindings ?? [], timestamp: new Date().toISOString() };
   }
 }

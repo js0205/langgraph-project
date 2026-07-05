@@ -53,8 +53,8 @@ graph TB
 |--------|------|----------|
 | 🎯 **协调器** | 分析用户意图，路由到合适的专家 | 意图识别、任务分派 |
 | 🔍 **诊断专家** | 分析症状，提供初步诊断意见 | 症状分析、疾病推理 |
-| 💊 **药剂师** | 提供用药建议，药物相互作用分析 | 用药指导、安全检查 |
-| 📚 **研究员** | 检索医学文献和科研证据 | 文献检索、证据支持 |
+| 💊 **药剂师** | 基于 NMPA 说明书检索（pgvector RAG）提供用药建议 | 用药指导、安全检查、真实出处 |
+| 📚 **研究员** | 实时检索 PubMed 文献，返回真实 PMID 出处 | 文献检索、证据支持 |
 | 💡 **顾问** | 综合所有信息，生成最终建议 | 信息整合、建议生成 |
 
 ## 🚀 快速开始
@@ -81,7 +81,14 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # 服务器配置
 PORT=3000
 NODE_ENV=development
+
+# RAG 检索（药剂师）：Neon Postgres 连接串，需启用 pgvector 扩展
+DATABASE_URL=postgres://user:pass@host/db
+# PubMed 检索（研究员）：可选，配置后提高调用限速
+NCBI_API_KEY=
 ```
+
+> 💡 药剂师的 RAG 检索依赖 `DATABASE_URL`。未配置时该 Agent 会安全降级为通用建议（不影响其余功能）。首次使用前需在数据库执行 `CREATE EXTENSION IF NOT EXISTS vector;`，并运行 `npm run ingest` 灌入药品说明书。
 
 2. **前端环境变量（可选）**
 
@@ -141,12 +148,18 @@ langgraph-project/
 │   │   │   ├── ResearchAgent.ts      # 研究员
 │   │   │   ├── AdvisorAgent.ts       # 顾问
 │   │   │   └── types.ts         # 类型定义
+│   │   ├── retrieval/           # RAG 检索层
+│   │   │   ├── pubmedClient.ts  # PubMed 文献检索
+│   │   │   └── vectorStore.ts   # pgvector 向量库工厂与说明书检索
 │   │   ├── services/
 │   │   │   ├── llmService.ts    # LLM 服务封装
 │   │   │   └── workflowService.ts    # LangGraph 工作流
 │   │   ├── routes/
 │   │   │   └── chatRoutes.ts    # API 路由
 │   │   └── index.ts             # 服务入口
+│   ├── scripts/
+│   │   └── ingest.ts            # 说明书入库脚本（npm run ingest）
+│   ├── data/drug-labels/        # NMPA 药品说明书种子数据
 │   └── package.json
 ├── frontend/                     # React 前端 ✅
 │   ├── src/
@@ -190,8 +203,8 @@ langgraph-project/
 
 #### 🧠 AI 能力
 - ✅ 症状分析和初步诊断
-- ✅ 用药建议和安全检查
-- ✅ 医学文献检索和证据支持
+- ✅ 基于 NMPA 说明书的 RAG 用药建议（pgvector 检索，附真实出处）
+- ✅ PubMed 实时文献检索（返回真实 PMID，检索失败自动降级）
 - ✅ 综合建议生成
 - ✅ 多轮对话上下文理解
 
@@ -213,8 +226,8 @@ langgraph-project/
 - ⏳ 用药提醒和日历功能
 
 #### 后端扩展
+- ✅ 外部知识集成（PubMed 文献 API + NMPA 说明书 pgvector 检索）
 - ⏳ 数据库集成（用户、会话、历史）
-- ⏳ 外部 API 集成（药品数据库、医学知识库）
 - ⏳ 用户认证和授权
 - ⏳ 缓存机制优化
 - ⏳ 性能监控和分析

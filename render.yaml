@@ -6,11 +6,17 @@ services:
     region: singapore
     plan: free
     rootDir: backend
-    buildCommand: npm install
+    buildCommand: npm install --legacy-peer-deps
     startCommand: npm start
     envVars:
       - key: GOOGLE_API_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NCBI_API_KEY
+        sync: false
+      - key: NODE_VERSION
+        value: "20"
       - key: NODE_ENV
         value: production
       - key: ALLOWED_ORIGINS

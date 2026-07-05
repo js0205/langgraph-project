@@ -7,7 +7,8 @@
     "dev": "npx tsx src/index.ts",
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ingest": "npx tsx scripts/ingest.ts"
   },
   "keywords": [],
   "author": "",

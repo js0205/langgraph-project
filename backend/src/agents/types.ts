@@ -13,7 +13,9 @@ export interface ResearchFinding {
   title: string;
   summary: string;
   relevance: number;
-  label: '[AI知识摘要]';
+  label: '[PubMed]' | '[AI知识摘要-未检索]' | '[AI知识摘要]';
+  pmid?: string;
+  url?: string;
 }
 
 export interface ResearchResult {
@@ -53,6 +55,7 @@ export interface Medicine {
 export interface PharmacistResult {
   medicines: Medicine[];
   warnings: string[];
+  sources?: string[];
 }
 
 export interface RecommendedMedicine {

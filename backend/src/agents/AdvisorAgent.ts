@@ -29,44 +29,64 @@ export class AdvisorAgent extends BaseAgent {
     }
   }
 
+  // Advisor prompt 上下文长度上限。超出时优先裁剪研究摘要(优先级最低),
+  // 保留诊断结论与药品推荐,避免静默丢弃关键医疗信息。
+  private static readonly MAX_CONTEXT_LEN = 4000;
+
   private buildContext(state: AgentState): string {
-    let ctx = `用户问题: ${state.userMessage}\n`;
+    // 核心信息(必留):用户问题、复杂度、诊断结论、药品推荐
+    let core = `用户问题: ${state.userMessage}\n`;
 
     if (state.coordinatorDecision) {
-      ctx += `\n问题复杂度: ${state.coordinatorDecision.complexity}`;
-      ctx += `\n分析: ${state.coordinatorDecision.reasoning}`;
+      core += `\n问题复杂度: ${state.coordinatorDecision.complexity}`;
+      core += `\n分析: ${state.coordinatorDecision.reasoning}`;
     }
 
     if (state.diagnosticResults) {
       const dr = state.diagnosticResults;
-      ctx += `\n\n【诊断结果】`;
-      if (dr.symptoms?.length) ctx += `\n症状: ${dr.symptoms.join('、')}`;
+      core += `\n\n【诊断结果】`;
+      if (dr.symptoms?.length) core += `\n症状: ${dr.symptoms.join('、')}`;
       if (dr.possibleConditions?.length) {
-        ctx += `\n可能疾病: ${dr.possibleConditions.map(c => `${c.name}(${c.probability}%)`).join('、')}`;
+        core += `\n可能疾病: ${dr.possibleConditions.map(c => `${c.name}(${c.probability}%)`).join('、')}`;
       }
-      ctx += `\n紧急程度: ${dr.urgency}\n建议: ${dr.recommendation}`;
+      core += `\n紧急程度: ${dr.urgency}\n建议: ${dr.recommendation}`;
     }
 
     if (state.pharmacistResults) {
       const pr = state.pharmacistResults;
-      ctx += `\n\n【药品推荐】`;
+      core += `\n\n【药品推荐】`;
       pr.medicines.forEach((m, i) => {
-        ctx += `\n${i + 1}. ${m.name} — ${m.indication} — ${m.usage}`;
+        core += `\n${i + 1}. ${m.name} — ${m.indication} — ${m.usage}`;
       });
-      if (pr.warnings?.length) ctx += `\n警告: ${pr.warnings.join('; ')}`;
+      if (pr.warnings?.length) core += `\n警告: ${pr.warnings.join('; ')}`;
     }
 
-    if (state.researchResults) {
-      const rr = state.researchResults;
-      ctx += `\n\n【医学知识摘要】`;
-      rr.keyFindings.forEach((f, i) => { ctx += `\n${i + 1}. ${f}`; });
+    // 研究摘要(可裁剪):优先级最低,仅取 keyFindings(已是一句话结论),不透传 findings 全文
+    let research = '';
+    if (state.researchResults?.keyFindings?.length) {
+      research += `\n\n【医学知识摘要】`;
+      state.researchResults.keyFindings.forEach((f, i) => { research += `\n${i + 1}. ${f}`; });
     }
 
-    return ctx;
+    // 长度守卫:优先保住核心信息,研究摘要按剩余预算截断,严禁静默丢弃
+    if (!research) return core;
+    const budget = AdvisorAgent.MAX_CONTEXT_LEN - core.length;
+    if (research.length <= budget) return core + research;
+
+    if (budget > 0) {
+      this.log(`⚠️ Advisor 上下文超长,研究摘要按预算截断(${research.length}→${budget}字符)`);
+      return core + research.slice(0, budget) + '\n[部分研究摘要因长度限制已省略]';
+    }
+
+    // 极端情况:仅核心信息就已达上限,完全放弃研究摘要
+    this.log(`⚠️ Advisor 核心信息已达上限(${core.length}字符),已丢弃全部研究摘要`);
+    return core;
   }
 
   private async generateAdvice(state: AgentState): Promise<AdvisorResult> {
     const context = this.buildContext(state);
+    // 常态化记录上下文长度,便于按真实数据校准 MAX_CONTEXT_LEN 阈值
+    this.log(`Advisor 上下文长度: ${context.length}/${AdvisorAgent.MAX_CONTEXT_LEN} 字符`);
 
     const prompt = `你是专业医疗顾问。请基于以下所有信息，生成一份全面、专业的用药建议。
 

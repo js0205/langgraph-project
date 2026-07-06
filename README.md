@@ -1,43 +1,45 @@
 # 🏥 多智能体医疗咨询系统
 
-一个基于 LangGraph 的多智能体医疗咨询系统，采用协作式 AI 架构，提供专业的症状诊断、用药建议、科研支持和健康咨询服务。
+基于 **LangGraph.js** 的多智能体医疗咨询系统:5 个专业智能体协作，结合药品说明书 RAG 检索与 PubMed 文献检索，通过 SSE 流式返回症状分析、用药建议与健康咨询。
+
+> ⚠️ 本项目为技术演示与学习用途，输出内容不构成医疗建议。详见文末[免责声明](#-免责声明)。
 
 ## 🌐 在线演示
 
-**🚀 立即体验：** https://frontend-duzoqjgye-js0205s-projects.vercel.app
+- **前端：** https://frontend-duzoqjgye-js0205s-projects.vercel.app （Vercel）
+- **后端 API：** https://langgraph-project-5dqx.onrender.com （Render，新加坡节点）
 
-- 前端：Vercel（全球 CDN）
-- 后端：Render（新加坡节点）
-- API：https://langgraph-project-5dqx.onrender.com
+## 📋 技术栈
 
-## 📋 项目概述
+| 层 | 技术 |
+|---|---|
+| 前端 | React 19 · TypeScript · Vite 7 · Tailwind CSS · axios |
+| 后端 | Node.js · Express 4 · TypeScript · tsx |
+| AI 编排 | LangGraph.js 1.0 · @langchain/core · @langchain/community |
+| LLM | Google Gemini（`gemini-2.5-flash`）|
+| 检索 | PostgreSQL + pgvector（说明书 RAG）· PubMed E-utilities（文献）|
+| 日志 / 测试 | pino · vitest |
 
-本项目是一个采用**多智能体协作架构**的全栈医疗咨询应用：
-
-- **前端**：React 19 + TypeScript + Vite + Tailwind CSS ✅
-- **后端**：Node.js + Express + TypeScript ✅
-- **AI 框架**：LangGraph.js 多智能体工作流 ✅
-- **LLM**：支持多模型（Gemini, GPT, Claude, DeepSeek 等）✅
-- **架构模式**：5 个专业智能体协作 + 状态管理 ✅
+> LLM 通过 `BaseAgent` 的共享模型实例注入，架构本身与具体模型解耦；替换其他 LLM 只需改动模型初始化，无需改各智能体逻辑。
 
 ## 🤖 多智能体架构
 
-系统采用 **5 个专业智能体** 协同工作，每个智能体负责特定领域：
+系统由 **5 个专业智能体** 协同工作，协调器按问题类型动态路由，最终由顾问汇总输出。
 
 ```mermaid
 graph TB
     User[👤 用户输入] --> Coordinator[🎯 协调器<br/>CoordinatorAgent]
-    
+
     Coordinator -->|路由决策| Diagnostic[🔍 诊断专家<br/>DiagnosticAgent]
     Coordinator -->|路由决策| Pharmacist[💊 药剂师<br/>PharmacistAgent]
     Coordinator -->|路由决策| Research[📚 研究员<br/>ResearchAgent]
-    
+
     Diagnostic -->|诊断结果| Advisor[💡 顾问<br/>AdvisorAgent]
     Pharmacist -->|用药方案| Advisor
     Research -->|科研证据| Advisor
-    
-    Advisor -->|最终建议| Response[📝 返回用户]
-    
+
+    Advisor -->|SSE 流式返回| Response[📝 返回用户]
+
     style Coordinator fill:#4a9eff,stroke:#2563eb,color:#fff
     style Diagnostic fill:#10b981,stroke:#059669,color:#fff
     style Pharmacist fill:#f59e0b,stroke:#d97706,color:#fff
@@ -47,276 +49,167 @@ graph TB
     style Response fill:#06b6d4,stroke:#0891b2,color:#fff
 ```
 
-### 智能体职责
-
 | 智能体 | 职责 | 核心能力 |
 |--------|------|----------|
-| 🎯 **协调器** | 分析用户意图，路由到合适的专家 | 意图识别、任务分派 |
-| 🔍 **诊断专家** | 分析症状，提供初步诊断意见 | 症状分析、疾病推理 |
-| 💊 **药剂师** | 基于 NMPA 说明书检索（pgvector RAG）提供用药建议 | 用药指导、安全检查、真实出处 |
-| 📚 **研究员** | 实时检索 PubMed 文献，返回真实 PMID 出处 | 文献检索、证据支持 |
-| 💡 **顾问** | 综合所有信息，生成最终建议 | 信息整合、建议生成 |
+| 🎯 **协调器** CoordinatorAgent | 分析意图，决定调用哪些专家 | 意图识别、路由决策 |
+| 🔍 **诊断专家** DiagnosticAgent | 从描述中提取症状、推理可能疾病 | 症状分析、疾病推理 |
+| 💊 **药剂师** PharmacistAgent | 基于 NMPA 说明书 RAG 检索给出用药建议 | pgvector 检索、安全检查、真实出处 |
+| 📚 **研究员** ResearchAgent | 实时检索 PubMed，返回真实 PMID | 文献检索、证据支持、失败降级 |
+| 💡 **顾问** AdvisorAgent | 汇总各专家产出，生成最终建议 | 信息整合、上下文管理 |
+
+### 上下文管理
+
+顾问汇总时不透传各智能体的原始产出，而是做**结构化投影**——只抽取关键字段（诊断结论、药名+适应症+用法、研究 `keyFindings`）拼装 prompt。同时设有**长度守卫**：超出上限时优先裁剪低优先级的研究摘要，保住诊断与用药信息，截断行为写入日志、绝不静默丢弃。每次请求记录上下文长度，便于按真实数据校准阈值。
 
 ## 🚀 快速开始
 
 ### 前置要求
 
-- Node.js 20+
-- npm 或 yarn
-- Google Gemini API Key（或其他支持的 LLM API Key）
+- Node.js 20+（推荐 24）
+- npm
+- Google Gemini API Key
+- （可选）PostgreSQL + pgvector，用于药剂师 RAG 检索
 
-### 环境配置
+### 1. 后端环境变量
 
-1. **后端环境变量**
-
-创建 `backend/.env` 文件：
+创建 `backend/.env`：
 
 ```bash
-# LLM API 配置（对话与 embedding 共用；变量名为 GOOGLE_API_KEY）
+# LLM（对话与 embedding 共用，变量名 GOOGLE_API_KEY）
 GOOGLE_API_KEY=your_gemini_api_key_here
-# 或使用其他模型
-# OPENAI_API_KEY=your_openai_key
-# ANTHROPIC_API_KEY=your_anthropic_key
 
-# 服务器配置
+# 服务器
 PORT=3000
 NODE_ENV=development
 
-# RAG 检索（药剂师）：Neon Postgres 连接串，需启用 pgvector 扩展
+# 药剂师 RAG（可选）：Postgres 连接串，需启用 pgvector
 DATABASE_URL=postgres://user:pass@host/db
-# PubMed 检索（研究员）：可选，配置后提高调用限速
+
+# PubMed 检索（可选）：配置后提升调用限速
 NCBI_API_KEY=
 ```
 
-> 💡 药剂师的 RAG 检索依赖 `DATABASE_URL`。未配置时该 Agent 会安全降级为通用建议（不影响其余功能）。首次使用前需在数据库执行 `CREATE EXTENSION IF NOT EXISTS vector;`，并运行 `npm run ingest` 灌入药品说明书。
+> 💡 药剂师 RAG 依赖 `DATABASE_URL`。未配置时该智能体安全降级为通用建议，不影响其余功能。首次使用需在库中执行 `CREATE EXTENSION IF NOT EXISTS vector;`，再运行 `npm run ingest` 灌入说明书数据。部署细节见 [docs/rag-deployment-guide.md](./docs/rag-deployment-guide.md)。
 
-2. **前端环境变量（可选）**
+### 2. 前端环境变量（可选）
 
-创建 `frontend/.env` 文件：
+创建 `frontend/.env`：
 
 ```bash
 VITE_API_URL=http://localhost:3000
 ```
 
-### 安装和运行
-
-#### 1. 克隆项目
+### 3. 启动
 
 ```bash
-git clone <repository-url>
-cd langgraph-project
+# 后端 → http://localhost:3000
+cd backend && npm install && npm run dev
+
+# 前端 → http://localhost:5173
+cd frontend && npm install && npm run dev
 ```
 
-#### 2. 启动后端
+### 4. 灌入说明书数据（启用 RAG 时）
 
 ```bash
-cd backend
-npm install
-npm run dev
+cd backend && npm run ingest
 ```
-
-后端将在 http://localhost:3000 启动 ✅
-
-#### 3. 启动前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-前端将在 http://localhost:5173 启动 ✅
 
 ### 快速测试
 
-启动后，在前端界面尝试以下问题：
-- "我最近头痛发热，该怎么办？"
-- "阿莫西林的用法用量是什么？"
-- "高血压有哪些最新的研究进展？"
+前端界面或直接调用 API：
+
+```bash
+curl -N -X POST http://localhost:3000/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message":"我头疼发烧咳嗽，应该吃什么药？"}'
+```
+
+## 🔌 API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/api/chat/stream` | 多智能体流式咨询，SSE 推送执行进度与最终结果 |
+| `GET` | `/api/health` | 健康检查 |
+
+**请求体：** `{ "message": string }`
+
+**SSE 事件类型：**
+
+| 事件 | 含义 |
+|---|---|
+| `agent_start` | 某智能体开始执行 |
+| `agent_complete` | 某智能体完成，附一句话摘要 |
+| `final_result` | 顾问生成的结构化最终建议 |
+| `error` | 执行出错 |
+| `done` | 流结束 |
 
 ## 📁 项目结构
 
 ```
 langgraph-project/
-├── backend/                      # Node.js 后端 ✅
+├── backend/                       # Node + Express + LangGraph
 │   ├── src/
-│   │   ├── agents/              # 多智能体系统
-│   │   │   ├── BaseAgent.ts     # 基础智能体类
-│   │   │   ├── CoordinatorAgent.ts   # 协调器
-│   │   │   ├── DiagnosticAgent.ts    # 诊断专家
-│   │   │   ├── PharmacistAgent.ts    # 药剂师
-│   │   │   ├── ResearchAgent.ts      # 研究员
-│   │   │   ├── AdvisorAgent.ts       # 顾问
-│   │   │   └── types.ts         # 类型定义
-│   │   ├── retrieval/           # RAG 检索层
-│   │   │   ├── pubmedClient.ts  # PubMed 文献检索
-│   │   │   └── vectorStore.ts   # pgvector 向量库工厂与说明书检索
+│   │   ├── agents/                # 多智能体
+│   │   │   ├── BaseAgent.ts        # 共享模型 + JSON/文本调用封装
+│   │   │   ├── CoordinatorAgent.ts # 协调器
+│   │   │   ├── DiagnosticAgent.ts  # 诊断专家
+│   │   │   ├── PharmacistAgent.ts  # 药剂师（RAG）
+│   │   │   ├── ResearchAgent.ts    # 研究员（PubMed）
+│   │   │   ├── AdvisorAgent.ts     # 顾问（投影 + 长度守卫）
+│   │   │   └── types.ts            # 共享状态与类型
+│   │   ├── retrieval/
+│   │   │   ├── pubmedClient.ts      # PubMed 文献检索
+│   │   │   └── vectorStore.ts       # pgvector 向量库与说明书检索
 │   │   ├── services/
-│   │   │   ├── llmService.ts    # LLM 服务封装
-│   │   │   └── workflowService.ts    # LangGraph 工作流
-│   │   ├── routes/
-│   │   │   └── chatRoutes.ts    # API 路由
-│   │   └── index.ts             # 服务入口
-│   ├── scripts/
-│   │   └── ingest.ts            # 说明书入库脚本（npm run ingest）
-│   ├── data/drug-labels/        # NMPA 药品说明书种子数据
-│   └── package.json
-├── frontend/                     # React 前端 ✅
-│   ├── src/
-│   │   ├── components/          # UI 组件
-│   │   │   ├── chat/            # 聊天相关组件
-│   │   │   └── medicine/        # 药品信息组件
-│   │   ├── services/
-│   │   │   ├── api.ts           # API 客户端
-│   │   │   └── chatService.ts   # 聊天服务
-│   │   ├── types/               # 类型定义
-│   │   ├── App.tsx              # 主应用
-│   │   └── main.tsx             # 入口文件
-│   └── package.json
-├── docs/                        # 文档目录
-├── shared/                      # 共享类型和工具
-├── DATABASE_DESIGN.md           # 数据库设计文档
-├── MULTI_AGENT_UPGRADE.md       # 多智能体升级指南
-├── MULTI_MODEL_GUIDE.md         # 多模型配置指南
-├── WORKFLOW_VS_AGENT.md         # 架构对比文档
-├── TUTORIAL.md                  # 完整开发教程
-└── START.md                     # 快速启动指南
+│   │   │   ├── multiAgentService.ts # LangGraph 编排 + SSE
+│   │   │   └── llmService.ts        # LLM 服务封装
+│   │   ├── routes/chatRoutes.ts     # API 路由
+│   │   └── index.ts                 # 服务入口
+│   ├── scripts/ingest.ts            # 说明书入库（npm run ingest）
+│   ├── data/drug-labels/            # NMPA 说明书种子数据
+│   └── src/__tests__/               # vitest 单元测试
+├── frontend/                        # React 19 + Vite + Tailwind
+│   └── src/
+│       ├── components/              # 聊天 / 药品信息 UI 组件
+│       ├── services/                # api.ts · chatService.ts（SSE）
+│       ├── types/                   # 类型定义
+│       └── App.tsx
+├── docs/                            # 部署指南 · 设计文档 · 计划
+├── render.yaml                      # Render 部署配置
+└── START.md                         # 快速启动指南
 ```
 
 ## ✨ 功能特性
 
-### 核心功能（已完成 ✅）
+**多智能体协作**
+- LangGraph 状态编排：协调器动态路由 → 专家并行/串行执行 → 顾问汇总
+- 结构化状态共享（`AgentState`），单轮请求相互隔离
+- 顾问上下文投影 + 长度守卫，防止上下文膨胀
 
-#### 🎯 多智能体协作系统
-- ✅ 5 个专业智能体（协调器、诊断、药剂、研究、顾问）
-- ✅ LangGraph 状态管理和工作流编排
-- ✅ 智能路由和任务分派
-- ✅ 上下文信息传递和状态共享
+**AI 与检索**
+- 症状分析与初步疾病推理
+- 基于 NMPA 说明书的 pgvector RAG 用药建议（附真实出处，无库时降级）
+- PubMed 实时文献检索（返回真实 PMID，失败自动降级）
+- 顾问综合建议生成
 
-#### 💬 聊天交互
-- ✅ 现代化聊天界面
-- ✅ 实时消息流式传输
-- ✅ 后端连接状态检测
-- ✅ 响应式设计
-- ✅ 加载动画和状态提示
-- ✅ 示例问题快捷入口
+**工程质量**
+- vitest 单元测试覆盖各智能体与检索层
+- pino 结构化日志
+- 边界异常包裹与安全降级，不吞错误、不产生死局
+- TypeScript 全链路类型安全
 
-#### 🧠 AI 能力
-- ✅ 症状分析和初步诊断
-- ✅ 基于 NMPA 说明书的 RAG 用药建议（pgvector 检索，附真实出处）
-- ✅ PubMed 实时文献检索（返回真实 PMID，检索失败自动降级）
-- ✅ 综合建议生成
-- ✅ 多轮对话上下文理解
+**交互体验**
+- SSE 流式输出，实时展示各智能体执行进度
+- 响应式聊天界面、示例问题快捷入口、后端连接检测
 
-#### 🔧 技术特性
-- ✅ 支持多种 LLM（Gemini, GPT, Claude, DeepSeek）
-- ✅ TypeScript 类型安全
-- ✅ RESTful API 设计
-- ✅ 错误处理和日志记录
-- ✅ 可扩展的智能体架构
+## 🗺️ 路线图
 
-### 待实现功能
-
-#### 前端增强
-- ⏳ 药品信息可视化卡片
-- ⏳ 聊天历史持久化
-- ⏳ 用户认证和个人档案
-- ⏳ 语音输入支持
-- ⏳ 图片识别（药品说明书扫描）
-- ⏳ 用药提醒和日历功能
-
-#### 后端扩展
-- ✅ 外部知识集成（PubMed 文献 API + NMPA 说明书 pgvector 检索）
-- ⏳ 数据库集成（用户、会话、历史）
-- ⏳ 用户认证和授权
-- ⏳ 缓存机制优化
-- ⏳ 性能监控和分析
-- ⏳ 部署优化和容器化
-
-## 🛠️ 技术栈
-
-### 前端
-- **React 19** - 现代 UI 库
-- **TypeScript** - 类型安全的 JavaScript 超集
-- **Vite** - 快速的前端构建工具
-- **Tailwind CSS** - 实用优先的 CSS 框架
-- **Axios** - 基于 Promise 的 HTTP 客户端
-
-### 后端
-- **Node.js 20+** - JavaScript 运行时
-- **Express** - 轻量级 Web 框架
-- **TypeScript** - 类型安全开发
-- **LangGraph.js** - 状态化多智能体工作流引擎
-- **@langchain/core** - LangChain 核心库
-
-### AI 和 LLM
-- **Google Gemini** - 主要 LLM（支持 Pro 和 Flash）
-- **OpenAI GPT** - 可选的 GPT-3.5/4 模型
-- **Anthropic Claude** - 可选的 Claude 模型
-- **DeepSeek** - 可选的国产大模型
-
-### 开发工具
-- **ESLint** - 代码质量检查
-- **Prettier** - 代码格式化
-- **tsx** - TypeScript 执行器
-- **nodemon** - 开发热重载
-
-## 📖 文档导航
-
-本项目包含详细的设计和开发文档：
-
-| 文档 | 描述 | 适用场景 |
-|------|------|---------|
-| [START.md](./START.md) | 快速启动指南 | 快速开始使用项目 |
-| [TUTORIAL.md](./TUTORIAL.md) | 完整开发教程 | 学习如何从零搭建 |
-| [MULTI_AGENT_UPGRADE.md](./MULTI_AGENT_UPGRADE.md) | 多智能体升级指南 | 了解架构演进 |
-| [WORKFLOW_VS_AGENT.md](./WORKFLOW_VS_AGENT.md) | Workflow vs Agent 对比 | 理解两种架构差异 |
-| [MULTI_MODEL_GUIDE.md](./MULTI_MODEL_GUIDE.md) | 多模型配置指南 | 配置不同的 LLM |
-| [DATABASE_DESIGN.md](./DATABASE_DESIGN.md) | 数据库设计文档 | 数据结构设计参考 |
-
-## 🎯 当前状态
-
-### ✅ 已完成（第一阶段）
-
-#### 核心架构
-- [x] 多智能体系统设计与实现
-- [x] LangGraph 工作流编排
-- [x] 状态管理机制
-- [x] 智能路由和任务分派
-
-#### 前端开发
-- [x] React 项目框架
-- [x] Tailwind CSS 配置
-- [x] 聊天界面 UI
-- [x] API 服务层
-- [x] 响应式设计
-
-#### 后端开发
-- [x] Express 服务器搭建
-- [x] 5 个专业智能体实现
-- [x] LLM 服务封装
-- [x] RESTful API 设计
-- [x] 错误处理和日志
-
-#### 文档和配置
-- [x] 完整的项目文档
-- [x] 多模型支持配置
-- [x] TypeScript 类型定义
-- [x] 开发环境配置
-
-### 🚧 进行中（第二阶段）
-
+- [ ] 多轮对话记忆（引入会话历史，需配套滚动摘要与消息裁剪）
 - [ ] 聊天历史持久化
-- [ ] 用户认证系统
-- [ ] 性能优化
-- [ ] 测试覆盖
-
-### 📅 计划中（第三阶段）
-
-- [ ] 外部 API 集成（药品数据库）
-- [ ] 高级功能（语音、图片）
-- [ ] 部署和运维
-- [ ] 监控和分析
+- [ ] 用户认证与个人档案
+- [ ] 检索缓存与性能监控
+- [ ] 前端药品卡片可视化、语音输入、说明书图片识别
 
 ## 🎨 系统工作流程
 
@@ -331,17 +224,17 @@ sequenceDiagram
     participant A as 顾问
 
     U->>F: 输入问题
-    F->>C: 发送请求
-    C->>C: 分析意图
-    
+    F->>C: POST /api/chat/stream
+    C->>C: 分析意图、决定路由
+
     alt 症状诊断
         C->>D: 分派任务
         D->>A: 返回诊断
     else 用药咨询
-        C->>P: 分派任务
+        C->>P: 分派任务（RAG 检索）
         P->>A: 返回用药建议
     else 科研查询
-        C->>R: 分派任务
+        C->>R: 分派任务（PubMed）
         R->>A: 返回研究证据
     else 综合咨询
         C->>D: 诊断分析
@@ -351,96 +244,48 @@ sequenceDiagram
         P->>A: 用药方案
         R->>A: 证据支持
     end
-    
-    A->>A: 综合处理
-    A->>F: 返回最终建议
+
+    A->>A: 投影汇总 + 长度守卫
+    A-->>F: SSE 流式返回最终建议
     F->>U: 展示结果
 ```
 
-## 📸 界面预览
+## 🧪 测试
 
-系统界面特点：
-- 🎨 现代化设计风格
-- 📱 完全响应式布局
-- 🔄 实时状态反馈
-- 💡 智能示例问题
-- 🎯 清晰的信息层级
+```bash
+cd backend
+npm test          # 运行全部单元测试
+npm run test:watch # 监听模式
+```
 
-## 🤝 贡献指南
+## 📖 文档
 
-欢迎贡献代码！请遵循以下步骤：
-
-1. **Fork 本项目**
-2. **创建特性分支**
-   ```bash
-   git checkout -b feature/YourFeature
-   ```
-3. **提交更改**
-   ```bash
-   git commit -m '添加某个特性'
-   ```
-4. **推送到分支**
-   ```bash
-   git push origin feature/YourFeature
-   ```
-5. **开启 Pull Request**
-
-### 代码规范
-- 遵循 TypeScript 最佳实践
-- 保持代码简洁易懂
-- 添加必要的注释
-- 编写单元测试
-- 更新相关文档
+| 文档 | 描述 |
+|------|------|
+| [START.md](./START.md) | 快速启动指南 |
+| [docs/rag-deployment-guide.md](./docs/rag-deployment-guide.md) | RAG 检索部署配置 |
+| [docs/superpowers/specs/](./docs/superpowers/specs/) | 多智能体与 RAG 设计文档 |
+| [docs/superpowers/plans/](./docs/superpowers/plans/) | 实施计划 |
 
 ## 💡 设计理念
 
-### 为什么选择多智能体架构？
+**为什么用多智能体？** 专业分工让每个智能体聚焦单一领域、更易维护；协调器按问题类型动态编排，只调用必要的专家，兼顾质量与成本；新增能力只需加一个智能体，架构可扩展。
 
-1. **专业分工** - 每个智能体专注于特定领域，提供更专业的服务
-2. **可扩展性** - 易于添加新的智能体和功能
-3. **可维护性** - 模块化设计，职责清晰
-4. **灵活性** - 根据问题类型动态选择合适的智能体
-5. **协作能力** - 多个智能体协同工作，提供全面的解决方案
-
-### 关键技术选择
-
-- **LangGraph** - 提供强大的状态管理和工作流编排能力
-- **TypeScript** - 提供类型安全，减少运行时错误
-- **React** - 成熟的前端框架，生态丰富
-- **Express** - 轻量级后端框架，易于扩展
+**关键取舍：** 采用单轮无状态设计，每次请求隔离，规避了多轮上下文膨胀；顾问汇总处以「投影 + 长度守卫」作为上下文管理防线，是本架构成本与稳定性的关键点。
 
 ## ⚠️ 免责声明
 
-> **重要提示：** 本应用提供的医疗信息仅供参考和教育目的，不能替代专业医生的诊断和建议。
-> 
-> - ❌ 不要将本系统的建议作为医疗诊断依据
+> 本应用提供的医疗信息仅供参考和教育目的，**不能替代专业医生的诊断和建议**。
+>
+> - ❌ 不要将系统建议作为医疗诊断依据
 > - ❌ 不要根据系统建议自行用药
 > - ✅ 任何健康问题请咨询专业医生
 > - ✅ 用药前请咨询医生或药师
 
-本项目为技术演示和学习项目，展示了多智能体系统的实现方法。
-
 ## 📄 许可证
 
-MIT License - 详见 [LICENSE](./LICENSE) 文件
+ISC
 
 ## 🙏 致谢
 
-感谢以下开源项目：
-- [LangGraph.js](https://github.com/langchain-ai/langgraphjs) - 多智能体工作流框架
-- [LangChain.js](https://github.com/langchain-ai/langchainjs) - AI 应用开发框架
-- [React](https://react.dev/) - 前端 UI 框架
-- [Tailwind CSS](https://tailwindcss.com/) - CSS 框架
-
-## 📞 联系方式
-
-如有问题或建议，欢迎：
-- 提交 [Issue](../../issues)
-- 发起 [Pull Request](../../pulls)
-- 查看 [文档](./docs)
-
----
-
-**🚀 项目状态：** 核心功能已完成，持续优化中
-
-**⭐ 如果这个项目对你有帮助，请给个 Star！**
+- [LangGraph.js](https://github.com/langchain-ai/langgraphjs) · [LangChain.js](https://github.com/langchain-ai/langchainjs) · [React](https://react.dev/) · [Tailwind CSS](https://tailwindcss.com/)

@@ -9,10 +9,17 @@ dotenv.config();
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
 
-// 中间件配置
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS || 'http://localhost:5173'
-}));
+// 中间件配置：支持 *、逗号分隔多域名、默认本地开发
+function resolveCorsOrigin(): cors.CorsOptions['origin'] {
+  const raw = process.env.ALLOWED_ORIGINS?.trim();
+  if (!raw || raw === '*') return true;
+  const origins = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (origins.length === 0) return 'http://localhost:5173';
+  if (origins.length === 1) return origins[0];
+  return origins;
+}
+
+app.use(cors({ origin: resolveCorsOrigin() }));
 app.use(express.json());
 
 // 健康检查路由

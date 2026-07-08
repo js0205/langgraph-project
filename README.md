@@ -6,8 +6,8 @@
 
 ## 🌐 在线演示
 
-- **前端：** https://frontend-duzoqjgye-js0205s-projects.vercel.app （Vercel）
-- **后端 API：** https://langgraph-project-5dqx.onrender.com （Render，新加坡节点）
+- **前端：** https://langgraph-project-eta.vercel.app （Vercel，公开访问）
+- **后端 API：** https://medical-backend-4k05.onrender.com （Render，新加坡节点）
 
 ## 📋 技术栈
 
@@ -87,6 +87,9 @@ DATABASE_URL=postgres://user:pass@host/db
 
 # PubMed 检索（可选）：配置后提升调用限速
 NCBI_API_KEY=
+
+# CORS：本地开发填 http://localhost:5173，线上部署填 * 或前端域名
+ALLOWED_ORIGINS=*
 ```
 
 > 💡 药剂师 RAG 依赖 `DATABASE_URL`。未配置时该智能体安全降级为通用建议，不影响其余功能。首次使用需在库中执行 `CREATE EXTENSION IF NOT EXISTS vector;`，再运行 `npm run ingest` 灌入说明书数据。部署细节见 [docs/rag-deployment-guide.md](./docs/rag-deployment-guide.md)。
@@ -96,14 +99,18 @@ NCBI_API_KEY=
 创建 `frontend/.env`：
 
 ```bash
-VITE_API_URL=http://localhost:3000
+# 本地开发
+VITE_API_URL=http://localhost:3000/api
+
+# 线上部署（Vercel 环境变量）
+# VITE_API_URL=https://medical-backend-4k05.onrender.com/api
 ```
 
 ### 3. 启动
 
 ```bash
 # 后端 → http://localhost:3000
-cd backend && npm install && npm run dev
+cd backend && npm install --legacy-peer-deps && npm run dev
 
 # 前端 → http://localhost:5173
 cd frontend && npm install && npm run dev
@@ -120,7 +127,13 @@ cd backend && npm run ingest
 前端界面或直接调用 API：
 
 ```bash
+# 本地
 curl -N -X POST http://localhost:3000/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message":"我头疼发烧咳嗽，应该吃什么药？"}'
+
+# 线上
+curl -N -X POST https://medical-backend-4k05.onrender.com/api/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"message":"我头疼发烧咳嗽，应该吃什么药？"}'
 ```
